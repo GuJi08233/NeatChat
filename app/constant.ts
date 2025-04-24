@@ -227,7 +227,7 @@ export const Moonshot = {
 
 export const Iflytek = {
   ExampleEndpoint: IFLYTEK_BASE_URL,
-  ChatPath: "v1/chat/completions",
+  ChatPath: "v2/chat/completions",
 };
 
 export const XAI = {
