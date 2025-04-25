@@ -668,6 +668,19 @@ export function Markdown(
 
   // 添加鼠标悬停状态
   const [isHovering, setIsHovering] = useState(false);
+  
+  // 添加自动收起details的样式
+  const autoCloseStyles = !props.loading && !props.isUser ? `
+    <style>
+      .markdown-body details {
+        animation: closeDetailsAfterDelay 0.5s forwards;
+      }
+      @keyframes closeDetailsAfterDelay {
+        0%, 99% { overflow: visible; }
+        100% { overflow: visible; open: false; }
+      }
+    </style>
+  ` : '';
 
   // 初始化消息发送时间
   useEffect(() => {
@@ -687,19 +700,29 @@ export function Markdown(
 
   // 自动关闭思考过程
   useEffect(() => {
-    // 当内容加载完成且不是用户消息时，自动关闭思考过程
+    // 当内容加载完成且不是用户消息时
     if (!props.loading && !props.isUser && mdRef.current) {
-      // 给思考过程关闭一点延迟，让用户看到它完成了
-      setTimeout(() => {
-        // 查找所有带有autoclose-think类的details元素
-        const thinkElements = mdRef.current?.querySelectorAll('details.autoclose-think');
-        if (thinkElements && thinkElements.length > 0) {
-          thinkElements.forEach(element => {
-            // 移除open属性来关闭它
-            element.removeAttribute('open');
-          });
+      // 查找所有details元素并关闭它们（更直接的方法）
+      const closeThinkDetails = () => {
+        try {
+          // 直接使用JavaScript查找并操作DOM元素
+          const allDetails = mdRef.current?.querySelectorAll('details');
+          if (allDetails && allDetails.length > 0) {
+            console.log("找到details元素:", allDetails.length, "个");
+            Array.from(allDetails).forEach((element) => {
+              // 直接关闭details
+              element.open = false;
+              console.log("已关闭details元素");
+            });
+          }
+        } catch (e) {
+          console.error("关闭details元素出错:", e);
         }
-      }, 500); // 500毫秒延迟，可根据需要调整
+      };
+
+      // 延迟执行关闭操作
+      const timerId = setTimeout(closeThinkDetails, 500);
+      return () => clearTimeout(timerId);
     }
   }, [props.loading, props.isUser, props.content]);
 
@@ -828,14 +851,44 @@ export function Markdown(
       <div
         className="markdown-body"
         style={{
-          fontSize: `${props.fontSize ?? 14}px`,
-          fontFamily: props.fontFamily || "inherit",
+          fontSize: props.fontSize ?? 14,
+          fontFamily: props.fontFamily ?? "Noto Sans SC",
         }}
         ref={mdRef}
-        onContextMenu={props.onContextMenu}
-        onDoubleClickCapture={props.onDoubleClickCapture}
-        dir="auto"
+        data-message-id={props.messageId}
+        onMouseEnter={() => setIsHovering(true)}
+        onMouseLeave={() => setIsHovering(false)}
+        onScroll={(e) => {
+          const currentTarget = e.currentTarget as HTMLDivElement;
+          const measureScrolled = () => {
+            const scrollTop = currentTarget.scrollTop;
+            
+            if (scrollTop !== lastScrollTopRef.current) {
+              setAutoScroll(
+                Math.abs(
+                  scrollTop + currentTarget.clientHeight - currentTarget.scrollHeight,
+                ) < 10,
+              );
+            }
+            lastScrollTopRef.current = scrollTop;
+          };
+          measureScrolled();
+        }}
+        {...props}
       >
+        {!props.isUser && !props.loading && (
+          <div dangerouslySetInnerHTML={{ __html: `
+            <style>
+              .markdown-body details {
+                animation: closeDetailsAfterDelay 0.5s forwards;
+              }
+              @keyframes closeDetailsAfterDelay {
+                0%, 99% { overflow: visible; }
+                100% { overflow: visible; open: false; }
+              }
+            </style>
+          `}} />
+        )}
         {props.loading ? (
           <LoadingIcon />
         ) : (
