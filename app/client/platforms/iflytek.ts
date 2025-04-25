@@ -88,7 +88,7 @@ export class SparkApi implements LLMApi {
 
     // 使用OpenAI兼容格式
     const requestPayload = {
-      model: "x1",
+      model: modelConfig.model,
       messages: messages,
       stream: !!options.config.stream,
       user: "user", // 用户ID
@@ -123,7 +123,10 @@ export class SparkApi implements LLMApi {
 
       // Make a fetch request
       const requestTimeoutId = setTimeout(
-        () => controller.abort(),
+        () => {
+          console.log("[Spark] 请求超时，正在中止");
+          controller.abort();
+        },
         REQUEST_TIMEOUT_MS,
       );
 
@@ -210,7 +213,18 @@ export class SparkApi implements LLMApi {
             }
             const text = msg.data;
             try {
-              const json = JSON.parse(text);
+              // 检查是否是空行或心跳信息
+              if (!text || text.trim() === '') {
+                return;
+              }
+              
+              // 移除开头的"data:"前缀(如果有)
+              let jsonText = text;
+              if (text.startsWith('data:')) {
+                jsonText = text.substring(5).trim();
+              }
+              
+              const json = JSON.parse(jsonText);
               
               // 检查是否有错误
               if (json.code !== 0) {
@@ -223,6 +237,20 @@ export class SparkApi implements LLMApi {
               const choices = json.choices || [];
               if (choices.length > 0) {
                 const delta = choices[0].delta || {};
+                
+                // 处理安全审核信息
+                const security_suggest = delta.security_suggest || {};
+                if (security_suggest.action === "HIDE_CONTINUE") {
+                  console.log("[Spark] 安全审核：隐藏内容并继续", security_suggest);
+                  // 隐藏部分内容但继续响应
+                  return;
+                }
+                
+                // 仅当delta中有role且为assistant时，忽略这个消息（通常是流式开始的标记）
+                if (delta.role === "assistant" && !delta.content && !delta.reasoning_content) {
+                  return;
+                }
+                
                 const content = delta.content || "";
                 const reasoning = delta.reasoning_content || "";
                 
@@ -248,16 +276,24 @@ export class SparkApi implements LLMApi {
                 }
               }
               
-              // 如果有usage信息，表示响应快结束了
-              if (json.usage) {
+              // 如果有usage信息且正在思考，结束思考模式
+              if (json.usage && isInThinking) {
                 console.log("[Spark] Usage:", json.usage);
-                if (isInThinking) {
-                  isInThinking = false;
-                  remainText += "\n</think>\n\n";
-                }
+                isInThinking = false;
+                remainText += "\n</think>\n\n";
+              }
+              
+              // 检查是否完成
+              if (json.status === "complete" || json.choices?.[0]?.finish_reason) {
+                console.log("[Spark] 响应完成");
+                return finish();
               }
             } catch (e) {
+              // 如果解析失败，可能是非JSON数据或其他特殊格式
               console.error("[Request] parse error", text);
+              if (text === '[DONE]') {
+                return finish();
+              }
               options.onError?.(new Error(`Failed to parse response: ${text}`));
             }
           },
@@ -282,9 +318,38 @@ export class SparkApi implements LLMApi {
           return;
         }
 
-        const resJson = await res.json();
-        const message = this.extractMessage(resJson);
-        options.onFinish(message, res);
+        try {
+          const resJson = await res.json();
+          
+          // 检查是否有错误
+          if (resJson.code !== 0) {
+            throw new Error(`Spark API错误: ${resJson.message || "未知错误"} (错误码: ${resJson.code})`);
+          }
+          
+          // 处理思考过程和实际内容
+          let fullContent = "";
+          const message = resJson.choices?.[0]?.message || {};
+          const reasoning = message.reasoning_content;
+          const content = message.content;
+          
+          // 检查是否有安全审核信息
+          if (message.security_suggest?.action === "HIDE_CONTINUE") {
+            console.log("[Spark] 安全审核：部分内容已隐藏", message.security_suggest);
+          }
+          
+          if (reasoning) {
+            fullContent += `<think>\n${reasoning}\n</think>\n\n`;
+          }
+          
+          if (content) {
+            fullContent += content;
+          }
+          
+          options.onFinish(fullContent, res);
+        } catch (e) {
+          console.error("[Request] failed to parse response", e);
+          options.onError?.(e as Error);
+        }
       }
     } catch (e) {
       console.log("[Request] failed to make a chat request", e);
