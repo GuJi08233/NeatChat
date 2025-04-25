@@ -57,7 +57,13 @@ export class SparkApi implements LLMApi {
   }
 
   extractMessage(res: any) {
-    return res.choices?.at(0)?.message?.content ?? "";
+    // 检查是否有错误
+    if (res.code !== 0) {
+      throw new Error(`Spark API错误: ${res.message || "未知错误"} (错误码: ${res.code})`);
+    }
+    
+    // 提取文本内容 - OpenAI兼容模式
+    return res.choices?.[0]?.message?.content || "";
   }
 
   speech(options: SpeechOptions): Promise<ArrayBuffer> {
@@ -80,29 +86,16 @@ export class SparkApi implements LLMApi {
       },
     };
 
-    const requestPayload: RequestPayload = {
-      messages,
-      stream: options.config.stream,
-      model: modelConfig.model,
+    // 使用OpenAI兼容格式
+    const requestPayload = {
+      model: "x1",
+      messages: messages,
+      stream: !!options.config.stream,
+      user: "user", // 用户ID
       temperature: modelConfig.temperature,
-      presence_penalty: modelConfig.presence_penalty,
-      frequency_penalty: modelConfig.frequency_penalty,
-      top_p: modelConfig.top_p,
-      // max_tokens: Math.max(modelConfig.max_tokens, 1024),
-      // Please do not ask me why not send max_tokens, no reason, this param is just shit, I dont want to explain anymore.
+      top_p: modelConfig.top_p || 0.95,
+      max_tokens: Math.min(modelConfig.max_tokens || 32768, 32768),
     };
-
-    // 为x1模型添加特殊配置
-    if (modelConfig.model === "x1") {
-      // 设置最大输出令牌数，x1支持最大32k输出
-      requestPayload.max_tokens = Math.min(modelConfig.max_tokens || 32768, 32768);
-      
-      // 添加思考过程支持
-      (requestPayload as any).response_format = {
-        type: "text",
-        thinking: true, // 启用思考过程
-      };
-    }
 
     console.log("[Request] Spark payload: ", requestPayload);
 
@@ -112,11 +105,20 @@ export class SparkApi implements LLMApi {
 
     try {
       const chatPath = this.path(Iflytek.ChatPath);
+      const headers = { ...getHeaders() };
+      
+      // 使用讯飞星火API的鉴权方式
+      const accessStore = useAccessStore.getState();
+      // APIpassword方式鉴权
+      if (accessStore.iflytekApiKey) {
+        headers["Authorization"] = `Bearer ${accessStore.iflytekApiKey}`;
+      }
+      
       const chatPayload = {
         method: "POST",
         body: JSON.stringify(requestPayload),
         signal: controller.signal,
-        headers: getHeaders(),
+        headers,
       };
 
       // Make a fetch request
@@ -209,30 +211,49 @@ export class SparkApi implements LLMApi {
             const text = msg.data;
             try {
               const json = JSON.parse(text);
-              const choices = json.choices as Array<{
-                delta: { content: string; reasoning_content?: string };
-              }>;
-              const delta = choices[0]?.delta?.content;
-              const reasoning = choices[0]?.delta?.reasoning_content;
               
-              // 处理x1模型的思考过程
-              if (reasoning && reasoning.length > 0) {
-                if (!isInThinking) {
-                  isInThinking = true;
-                  remainText += "<think>\n" + reasoning;
-                } else {
-                  remainText += reasoning;
-                }
-                return;
+              // 检查是否有错误
+              if (json.code !== 0) {
+                console.error("[Spark] API错误:", json);
+                options.onError?.(new Error(`Spark API错误: ${json.message || "未知错误"} (错误码: ${json.code})`));
+                return finish();
               }
+              
+              // 处理OpenAI兼容格式的响应
+              const choices = json.choices || [];
+              if (choices.length > 0) {
+                const delta = choices[0].delta || {};
+                const content = delta.content || "";
+                const reasoning = delta.reasoning_content || "";
+                
+                // 处理思考过程
+                if (reasoning && reasoning.length > 0) {
+                  if (!isInThinking) {
+                    isInThinking = true;
+                    remainText += "<think>\n" + reasoning;
+                  } else {
+                    remainText += reasoning;
+                  }
+                  return;
+                }
 
-              if (delta) {
-                // 如果正在思考并收到了非思考内容，结束思考
+                if (content && content.length > 0) {
+                  // 如果正在思考并收到了非思考内容，结束思考
+                  if (isInThinking) {
+                    isInThinking = false;
+                    remainText += "\n</think>\n\n" + content;
+                  } else {
+                    remainText += content;
+                  }
+                }
+              }
+              
+              // 如果有usage信息，表示响应快结束了
+              if (json.usage) {
+                console.log("[Spark] Usage:", json.usage);
                 if (isInThinking) {
                   isInThinking = false;
-                  remainText += "\n</think>\n\n" + delta;
-                } else {
-                  remainText += delta;
+                  remainText += "\n</think>\n\n";
                 }
               }
             } catch (e) {
