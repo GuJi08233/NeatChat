@@ -397,7 +397,7 @@ ${quotedContent}
     const duration = handleThinkingTime(thinkContent);
     const durationText = duration ? Locale.NewChat.ThinkingTime(duration) : "";
 
-    return `<details open>
+    return `<details>
 <summary>${Locale.NewChat.Think}${durationText}</summary>
 
 ${quotedContent}

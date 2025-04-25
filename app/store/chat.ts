@@ -772,8 +772,15 @@ export const useChatStore = createPersistStore(
                 content: Locale.Store.Prompt.Topic,
               }),
             );
+          // 确保消息内容不含思考过程
+          const cleanTopicMessages = topicMessages.map(msg => ({
+            ...msg,
+            content: msg.role === "assistant"
+              ? getMessageTextContentWithoutThinking(msg)
+              : typeof msg.content === "string" ? msg.content : ""
+          }));
           api.llm.chat({
-            messages: topicMessages,
+            messages: cleanTopicMessages,
             config: {
               model,
               stream: false,

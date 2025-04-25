@@ -71,6 +71,7 @@ import {
   isDalle3,
   showPlugins,
   safeLocalStorage,
+  getMessageTextContentWithoutThinking,
 } from "../utils";
 
 import { uploadImage as uploadImageRemote } from "@/app/utils/chat";
@@ -2227,7 +2228,7 @@ function _Chat() {
                                 icon={<CopyIcon />}
                                 onClick={() =>
                                   copyToClipboard(
-                                    getMessageTextContent(message),
+                                    getMessageTextContentWithoutThinking(message),
                                   )
                                 }
                               />
