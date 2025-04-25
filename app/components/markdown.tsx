@@ -397,7 +397,7 @@ ${quotedContent}
     const duration = handleThinkingTime(thinkContent);
     const durationText = duration ? Locale.NewChat.ThinkingTime(duration) : "";
 
-    return `<details>
+    return `<details class="autoclose-think">
 <summary>${Locale.NewChat.Think}${durationText}</summary>
 
 ${quotedContent}
@@ -684,6 +684,24 @@ export function Markdown(
       }
     }
   }, [props.loading, props.isUser, props.messageId]);
+
+  // 自动关闭思考过程
+  useEffect(() => {
+    // 当内容加载完成且不是用户消息时，自动关闭思考过程
+    if (!props.loading && !props.isUser && mdRef.current) {
+      // 给思考过程关闭一点延迟，让用户看到它完成了
+      setTimeout(() => {
+        // 查找所有带有autoclose-think类的details元素
+        const thinkElements = mdRef.current?.querySelectorAll('details.autoclose-think');
+        if (thinkElements && thinkElements.length > 0) {
+          thinkElements.forEach(element => {
+            // 移除open属性来关闭它
+            element.removeAttribute('open');
+          });
+        }
+      }, 500); // 500毫秒延迟，可根据需要调整
+    }
+  }, [props.loading, props.isUser, props.content]);
 
   // 修改token计算逻辑，添加首字延迟计算
   useEffect(() => {

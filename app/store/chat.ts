@@ -125,7 +125,8 @@ function getSummarizeModel(
   currentModel: string,
   providerName: string,
 ): string[] {
-  return [currentModel, providerName];
+  // 始终返回OpenAI的gpt-4o-mini作为摘要模型
+  return ["gpt-4o-mini", "OpenAI"];
 }
 
 function countMessages(msgs: ChatMessage[]) {
@@ -725,12 +726,13 @@ export const useChatStore = createPersistStore(
         const config = useAppConfig.getState();
         const session = targetSession;
         const modelConfig = session.mask.modelConfig;
-        // skip summarize when using dalle3?
+        
+        // skip summarize when using dalle3
         if (isDalle3(modelConfig.model)) {
           return;
         }
-
-        // if not config compressModel, then using getSummarizeModel
+        
+        // 获取摘要模型 - 无论当前模型是什么类型，都使用getSummarizeModel获取适合的摘要模型
         const [model, providerName] = modelConfig.compressModel
           ? [modelConfig.compressModel, modelConfig.compressProviderName]
           : getSummarizeModel(
@@ -739,8 +741,7 @@ export const useChatStore = createPersistStore(
             );
         const api: ClientApi = getClientApi(providerName as ServiceProvider);
 
-        // remove error messages if any
-        // const messages = session.messages;
+        // 移除错误消息，并确保去除思考过程
         const messages = session.messages.map((v) => ({
           ...v,
           content:
@@ -749,7 +750,7 @@ export const useChatStore = createPersistStore(
               : getMessageTextContent(v),
         }));
 
-        // should summarize topic after chating more than 50 words
+        // 应该在聊天超过50个单词后总结主题
         const SUMMARIZE_MIN_LEN = 50;
         if (
           (config.enableAutoGenerateTitle &&
