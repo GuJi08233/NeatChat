@@ -277,6 +277,7 @@ export const KnowledgeCutOffDate: Record<string, string> = {
   // it's now easier to add "KnowledgeCutOffDate" instead of stupid hardcoding it, as was done previously.
   "gemini-pro": "2023-12",
   "gemini-pro-vision": "2023-12",
+  "x1": "2025-03",
 };
 
 export const DEFAULT_TTS_ENGINE = "OpenAI-TTS";
@@ -390,13 +391,7 @@ const tencentModels = [
 
 const moonshotModes = ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"];
 
-const iflytekModels = [
-  "general",
-  "generalv3",
-  "pro-128k",
-  "generalv3.5",
-  "4.0Ultra",
-];
+const iflytekModels = ["x1"];
 
 const xAIModes = ["grok-beta"];
 

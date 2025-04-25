@@ -304,6 +304,11 @@ export function showPlugins(providerName?: string, model?: string) {
   if (model === "gemini-2.0-flash-exp") {
     return true;
   }
+  
+  // 允许讯飞星火x1模型使用插件（推理能力）
+  if (model === "x1") {
+    return true;
+  }
 
   // 恢复原来的功能，允许特定provider使用插件
   if (!providerName || !model) return false;

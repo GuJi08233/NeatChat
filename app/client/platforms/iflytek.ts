@@ -92,6 +92,18 @@ export class SparkApi implements LLMApi {
       // Please do not ask me why not send max_tokens, no reason, this param is just shit, I dont want to explain anymore.
     };
 
+    // 为x1模型添加特殊配置
+    if (modelConfig.model === "x1") {
+      // 设置最大输出令牌数，x1支持最大32k输出
+      requestPayload.max_tokens = Math.min(modelConfig.max_tokens || 32768, 32768);
+      
+      // 添加思考过程支持
+      (requestPayload as any).response_format = {
+        type: "text",
+        thinking: true, // 启用思考过程
+      };
+    }
+
     console.log("[Request] Spark payload: ", requestPayload);
 
     const shouldStream = !!options.config.stream;
@@ -118,6 +130,7 @@ export class SparkApi implements LLMApi {
         let remainText = "";
         let finished = false;
         let responseRes: Response;
+        let isInThinking = false;
 
         // Animate response text to make it look smooth
         function animateResponseText() {
@@ -197,12 +210,30 @@ export class SparkApi implements LLMApi {
             try {
               const json = JSON.parse(text);
               const choices = json.choices as Array<{
-                delta: { content: string };
+                delta: { content: string; reasoning_content?: string };
               }>;
               const delta = choices[0]?.delta?.content;
+              const reasoning = choices[0]?.delta?.reasoning_content;
+              
+              // 处理x1模型的思考过程
+              if (reasoning && reasoning.length > 0) {
+                if (!isInThinking) {
+                  isInThinking = true;
+                  remainText += "<think>\n" + reasoning;
+                } else {
+                  remainText += reasoning;
+                }
+                return;
+              }
 
               if (delta) {
-                remainText += delta;
+                // 如果正在思考并收到了非思考内容，结束思考
+                if (isInThinking) {
+                  isInThinking = false;
+                  remainText += "\n</think>\n\n" + delta;
+                } else {
+                  remainText += delta;
+                }
               }
             } catch (e) {
               console.error("[Request] parse error", text);
